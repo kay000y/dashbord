@@ -16,7 +16,7 @@ st.set_page_config(
 # -----------------------------------------------------------------------------
 @st.cache_data
 def load_data():
-    url = "https://raw.githubusercontent.com/kay000y/blob/main/population_ts_yearly_gender.zip"
+    url = "https://raw.githubusercontent.com/kay000y/contents/main/population_ts_yearly_gender.zip"
     # 판다스는 zip 압축 파일 URL을 직접 읽을 수 있습니다.
     df = pd.read_csv(url)
     
