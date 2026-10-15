@@ -22,7 +22,7 @@ st.write(
 @st.cache_data
 def load_data():
     """Github에서 인구 데이터 CSV(zip 압축)를 읽어와 가장 최신 연도 데이터만 반환합니다."""
-    url = "https://raw.githubusercontent.com/kay000y/contents/main/population_ts_yearly_gender.zip"
+    url = "https://raw.githubusercontent.com/kay000y/dashbord/main/population_ts_yearly_gender.zip"
 
     # pandas는 zip 파일 안의 csv를 자동으로 압축 해제하여 읽습니다.
     df = pd.read_csv(url)
