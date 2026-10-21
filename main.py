@@ -145,4 +145,150 @@ def process_year_data(df, year):
 df_grouped = process_year_data(df_raw, selected_year)
 
 # GeoJSON 기반 지도용 마스터 데이터프레임 구축 (Right Join 개념으로 GeoJSON 기준 유지)
-df_map = pd.merge(df_geo, df_grouped)
+df_map = pd.merge(df_geo, df_grouped, on="시군구코드", how="left")
+df_map["풀시군구명"] = df_map["시도"] + " " + df_map["시군구"]
+
+# 데이터 매칭 실패 지역(미매칭/옛 행정구역 코드 등) 확인
+unmatched_regions = df_map[df_map["총인구"].isna()]["풀시군구명"].tolist()
+
+# 선택된 시도 필터링
+if selected_sido != "전국":
+    df_display = df_map[df_map["시도"] == selected_sido].copy()
+else:
+    df_display = df_map.copy()
+
+# 지표별 변수 세팅
+if "고령화율" in indicator:
+    val_col = "고령화율"
+    val_label = "고령화율(%)"
+
+    # 구간 정의: 19%, 23%, 28%, 38%
+    bins = [-np.inf, 19, 23, 28, 38, np.inf]
+    labels = [
+        "19% 미만",
+        "19% 이상 ~ 23% 미만",
+        "23% 이상 ~ 28% 미만",
+        "28% 이상 ~ 38% 미만",
+        "38% 이상",
+    ]
+    color_discrete_map = {
+        "19% 미만": "#fee5d9",
+        "19% 이상 ~ 23% 미만": "#fcae91",
+        "23% 이상 ~ 28% 미만": "#fb6a4a",
+        "28% 이상 ~ 38% 미만": "#de2d26",
+        "38% 이상": "#a50f15",
+        "데이터 없음": "#d9d9d9",
+    }
+else:
+    val_col = "유소년비율"
+    val_label = "유소년 비율(%)"
+
+    # 유소년 비율 구간 정의 (8%, 10%, 12%, 14%)
+    bins = [-np.inf, 8, 10, 12, 14, np.inf]
+    labels = [
+        "8% 미만",
+        "8% 이상 ~ 10% 미만",
+        "10% 이상 ~ 12% 미만",
+        "12% 이상 ~ 14% 미만",
+        "14% 이상",
+    ]
+    color_discrete_map = {
+        "8% 미만": "#eff3ff",
+        "8% 이상 ~ 10% 미만": "#bdd7e7",
+        "10% 이상 ~ 12% 미만": "#6baed6",
+        "12% 이상 ~ 14% 미만": "#3182bd",
+        "14% 이상": "#08519c",
+        "데이터 없음": "#d9d9d9",
+    }
+
+# 범주형 구간 컬럼 생성
+df_display["구간"] = pd.cut(
+    df_display[val_col], bins=bins, labels=labels
+).astype(str)
+df_display["구간"] = df_display["구간"].replace("nan", "데이터 없음")
+
+
+# -----------------------------------------------------------------------------
+# 지표 카드 (Metric) 세 장 출력
+# -----------------------------------------------------------------------------
+valid_data = df_display.dropna(subset=[val_col])
+
+col1, col2, col3 = st.columns(3)
+
+if not valid_data.empty:
+    # 1. 전국/선택시도 총합 기반 비율 계산
+    total_pop = valid_data["총인구"].sum()
+    if "고령화율" in indicator:
+        target_pop = valid_data["65세이상인구"].sum()
+    else:
+        target_pop = valid_data["0_14세인구"].sum()
+
+    overall_rate = (target_pop / total_pop * 100) if total_pop > 0 else 0
+
+    # 2. 최고 / 최저 지역
+    max_row = valid_data.loc[valid_data[val_col].idxmax()]
+    min_row = valid_data.loc[valid_data[val_col].idxmin()]
+
+    area_prefix = f"[{selected_sido}] " if selected_sido != "전국" else ""
+
+    with col1:
+        st.metric(
+            f"{area_prefix}전체 평균 {val_label.split('(')[0]}",
+            f"{overall_rate:.2f}%",
+        )
+    with col2:
+        st.metric(
+            "가장 높은 시군구",
+            f"{max_row['풀시군구명']}",
+            f"{max_row[val_col]:.2f}%",
+        )
+    with col3:
+        st.metric(
+            "가장 낮은 시군구",
+            f"{min_row['풀시군구명']}",
+            f"{min_row[val_col]:.2f}%",
+        )
+else:
+    st.info("해당 조건의 데이터가 존재하지 않습니다.")
+
+st.markdown("---")
+
+# -----------------------------------------------------------------------------
+# Plotly Choropleth 생성
+# -----------------------------------------------------------------------------
+fig = px.choropleth(
+    df_display,
+    geojson=geojson_kr,
+    locations="시군구코드",
+    featureidkey="properties.코드",
+    color="구간",
+    category_orders={"구간": labels + ["데이터 없음"]},
+    color_discrete_map=color_discrete_map,
+    hover_name="풀시군구명",
+    hover_data={
+        "시군구코드": False,
+        "구간": False,
+        val_col: ":.2f%",
+    },
+    labels={val_col: val_label, "구간": "구간"},
+)
+
+# 배경 지도 숨김 및 선택한 지역 중심으로 확대
+fig.update_geos(fitbounds="locations", visible=False)
+
+fig.update_layout(
+    margin={"r": 0, "t": 10, "l": 0, "b": 0},
+    height=720,
+    legend_title_text=f"{val_label.split('(')[0]} 범주",
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# -----------------------------------------------------------------------------
+# 하단 안내 문구
+# -----------------------------------------------------------------------------
+if unmatched_regions:
+    st.caption(
+        f"⚠️ **데이터 미표시 지역 안내 ({len(unmatched_regions)}곳):** "
+        f"{', '.join(unmatched_regions)} 은(는) 선택하신 {selected_year}년 기준 행정구역 코드 미비 또는 개편으로 인해 지도의 경계 데이터와 일치하지 않아 회색으로 표시되었습니다."
+    )
