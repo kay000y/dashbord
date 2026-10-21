@@ -145,4 +145,4 @@ def process_year_data(df, year):
 df_grouped = process_year_data(df_raw, selected_year)
 
 # GeoJSON 기반 지도용 마스터 데이터프레임 구축 (Right Join 개념으로 GeoJSON 기준 유지)
-df_map = pd.merge(df_geo, df_grouped
+df_map = pd.merge(df_geo, df_grouped)
